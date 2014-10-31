@@ -1,0 +1,6 @@
+name = Custom deploy Drupal to Drupal
+description = An other alternative to Migrate
+core = 7.x
+version = 7.x-1
+package = Actency
+files[] = deploy_d2d.module
