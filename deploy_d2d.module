@@ -62,8 +62,8 @@ function deploy_d2d_menu() {
  * Menu callbacks
  */
 function deploy_d2d_deploy_page() {
-  $output = l('import', 'admin/deploy_d2d/import');
-  $output .= '<br/>' . l('export', 'admin/deploy_d2d/export');
+  $output = l('import', 'admin/deploy_d2d/import-export/import');
+  $output .= '<br/>' . l('export', 'admin/deploy_d2d/import-export/export');
   return $output;
 }
 
@@ -86,6 +86,32 @@ function deploy_d2d_export_form($form, &$form_state) {
 }
 
 function deploy_d2d_import_form($form, &$form_state) {
+
+
+  $form['delete'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Delete'),
+    '#weight' => -5,
+    '#collapsible' => TRUE,
+    '#collapsed' => FALSE,
+  );
+
+  if (module_exists('domain')) {
+    $domains = domain_domains();
+    $options = array('' => '');
+    $options = array('0' => 'ALL');
+    foreach ($domains as $domain) {
+      $options[$domain['domain_id']] = $domain['sitename'];
+    }
+    $form['delete']['domain'] = array(
+      '#type' => 'select',
+      '#title' => t('Domain'),
+      '#options' => $options,
+      '#required' => TRUE,
+    );
+  }
+  $form['delete']['delete'] = array('#type' => 'checkbox', '#title' => t('Delete ALL nodes before import.'),  '#return_value' => 1,    '#default_value' => 0, );
+
   $form['submit'] = array('#type' => 'submit', '#value' => t('Import'));
   return $form;
 }
@@ -131,6 +157,26 @@ function deploy_d2d_export_form_submit($form, &$form_state) {
 }
 
 function deploy_d2d_import_form_submit($form, &$form_state) {
+
+
+  if( $form_state['values']['delete']==1){
+    $nids=array();
+    if(isset($form_state['values']['domain']) && (int)($form_state['values']['domain'])>0){
+      $result = db_query("SELECT da.nid  FROM {domain_access} da where da.gid=:gid and realm='domain_id' ", array(':gid' => $form_state['values']['domain']));
+      foreach ($result as $row) {
+          $nids[] = $row->nid;
+      }
+    }else{
+      $result = db_query('SELECT n.nid FROM {node} n');
+      foreach ($result as $row) {
+        $nids[$row->nid] = $row->nid;
+      }
+    }
+     node_delete_multiple($nids);
+    drupal_set_message(t('Delete @countnode nodes',array('@countnode'=>count($nids))));
+  }
+
+
   $nodes = array();
   $taxos = array();
   $users = array();
@@ -156,13 +202,20 @@ function deploy_d2d_import_form_submit($form, &$form_state) {
 
   $menu_links_file_import = file_get_contents('public://import/menu_links.export');
   $menu_links_import = deploy_d2d_drupal_import($menu_links_file_import);
+  $i=0;
 
   // Import
+  //users :
+  $users = deploy_d2d_process_users_import($users_import);
+
+  // nodes
   foreach ($nodes_import as $current_node) {
     if (!array_key_exists($current_node->nid, $nodes)) {
-      $nodes[$current_node->nid] = deploy_d2d_process_node_import($current_node, $nodes_import, $taxo_import, $users_import, $nodes, $taxos, $users,$files_file);
+      $nodes[$current_node->nid] = deploy_d2d_process_node_import($current_node, $nodes_import, $taxo_import, $users_import, $nodes, $taxos, $users,$files_file,$i);
     }
   }
+  drupal_set_message(t('Import @countnode nodes',array('@countnode'=>count($nodes))));
+
 
   // Import menus links
   foreach ($menu_links_import as $menu_link) {
@@ -170,6 +223,7 @@ function deploy_d2d_import_form_submit($form, &$form_state) {
       $menu_links[$menu_link['mlid']] = deploy_d2d_process_menu_link_import($menu_link, $menu_links_import, $nodes, $menu_links);
     }
   }
+  drupal_set_message(t('Import @countnode menu links',array('@countnode'=>count($menu_link))));
 
   drupal_set_message(t('Import: succeeded'));
 
@@ -284,12 +338,17 @@ function deploy_d2d_process_menu_link_import($menu_link, $menu_links_import, $no
   return FALSE;
 }
 
-function deploy_d2d_process_node_import($node, $nodes_import, $taxo_import, $users_import, &$nodes, &$taxos, &$users, &$files) {
+function deploy_d2d_process_node_import($node, $nodes_import, $taxo_import, $users_import, &$nodes, &$taxos, &$users, &$files,&$i) {
+
   $nid = $node->nid;
   if (!array_key_exists($node->nid, $nodes)) {
     $node_destination = clone $node;
     if (module_exists('uuid') && function_exists('entity_uuid_load') && $node->uuid && $node_destinationuuuid =entity_uuid_load('node', array($node->uuid))){
       $node_destinationuuuid=$node_destinationuuuid[key($node_destinationuuuid)];
+     /* if ($node_destinationuuuid->changed > (time()-60*60) || $i > 10){
+        $nodes[$nid] = $node_destinationuuuid;
+        return $node_destinationuuuid;
+      }*/
       $node_destination->uid=$node->uid;
       $node_destination->revision_uid=$node->revision_uid;
       $node_destination->vid=$node_destinationuuuid->vid;
@@ -302,8 +361,17 @@ function deploy_d2d_process_node_import($node, $nodes_import, $taxo_import, $use
       unset($node_destination->nid);
       unset($node_destination->tnid);
     }
+    $user=$users[$node->uid];
+    if($user->uid){
+      $node_destination->uid=$user->uid;
+    }
 
-    foreach ($node_destination as $field_name => $field) {
+    //obtain a nid
+    node_object_prepare($node_destination);
+    $node_destination = node_submit($node_destination); // Prepare node for saving
+    node_save($node_destination);
+    $nodes[$nid] = $node_destination;
+   foreach ($node_destination as $field_name => $field) {
       if (substr($field_name, 0, 5) == 'field') {
         $field_info = field_info_field($field_name);
         switch ($field_info['type']) {
@@ -314,8 +382,8 @@ function deploy_d2d_process_node_import($node, $nodes_import, $taxo_import, $use
                   $ref_nid = (int) substr($link['url'], 5);
                   if (!array_key_exists($ref_nid, $nodes) && $ref_nid != $nid) {
                     if (array_key_exists($ref_nid, $nodes_import)) {
-                      $nodes[$ref_nid] = deploy_d2d_process_node_import($nodes_import[$ref_nid], $nodes_import, $taxo_import, $users_import, $nodes, $taxos, $users, $files);
-                      $node_destination->{$field_name}[LANGUAGE_NONE][$k]['url'] = 'node/' . $nodes[$ref_nid]->nid;
+                    $nodes[$ref_nid] = deploy_d2d_process_node_import($nodes_import[$ref_nid], $nodes_import, $taxo_import, $users_import, $nodes, $taxos, $users, $files,$i);
+                     $node_destination->{$field_name}[LANGUAGE_NONE][$k]['url'] = 'node/' . $nodes[$ref_nid]->nid;
                     }
                     else {
                       unset($node_destination->{$field_name}[LANGUAGE_NONE][$k]);
@@ -347,7 +415,7 @@ function deploy_d2d_process_node_import($node, $nodes_import, $taxo_import, $use
                   $ref_nid = (int) $target_id['target_id'];
                   if (!array_key_exists($ref_nid, $nodes)) {
                     if (array_key_exists($ref_nid, $nodes_import)) {
-                      $nodes[$ref_nid] = deploy_d2d_process_node_import($nodes_import[$ref_nid], $nodes_import, $taxo_import, $users_import, $nodes, $taxos, $users, $files);
+                      $nodes[$ref_nid] = deploy_d2d_process_node_import($nodes_import[$ref_nid], $nodes_import, $taxo_import, $users_import, $nodes, $taxos, $users, $files,$i);
                       $node_destination->{$field_name}[LANGUAGE_NONE][$k]['target_id'] = $nodes[$ref_nid]->nid;
                     }
                     else {
@@ -394,9 +462,10 @@ function deploy_d2d_process_node_import($node, $nodes_import, $taxo_import, $use
     node_object_prepare($node_destination);
     $node_destination = node_submit($node_destination); // Prepare node for saving
     try {
+      $i++;
       node_save($node_destination);
       $success = TRUE;
-      $nodes[$nid] = $node_destination;
+  //    $nodes[$nid] = $node_destination;
       return $node_destination;
     } catch (Exception $e) {
       // Do your error handling here.
@@ -405,6 +474,39 @@ function deploy_d2d_process_node_import($node, $nodes_import, $taxo_import, $use
     }
   }
   return FALSE;
+}
+
+function deploy_d2d_process_users_import($users_import){
+  $users_destination=array();
+foreach($users_import as $user){
+
+  $uid = $user->uid;
+  if ($uid>1){
+  $user_destination = ($user->mail)?user_load_by_mail(array('mail'=> $user->mail)):false;
+    if (!$user_destination || $user_destination->uid==0){ //pas de user existant je verifie dans les uuid
+        if (module_exists('uuid') && function_exists('entity_uuid_load') &&
+          $user->uuid && $user_destinationuuuid =entity_uuid_load('user', array($user->uuid))){
+          unset($user->uid);
+          $user->uid=$user_destinationuuuid->uid;
+          $user->uuid=$user_destinationuuuid->uuid;
+          $user_destination=user_save($user);
+        }else{
+          unset($user->uid);
+          $user_destination=user_save($user);
+        }
+  }
+  else{
+    $user->uid=$user_destination->uid;
+    $user_destination=user_save($user);
+  }
+  }
+  else{
+    $user_destination=$user;
+  }
+  $users[$uid]=$user_destination;
+}
+
+  return  $users;
 }
 
 /**
@@ -449,6 +551,8 @@ function deploy_d2d_check_user($uid, $users_import_order) {
       return $user;
     }
   }
+
+
   return deploy_d2d_create_user($user);
 }
 
