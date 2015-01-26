@@ -11,10 +11,8 @@ Drupal 7 -   customized to take only  the Atoms of SCALD
 Go to the new website  at /admin/deploy_d2d/import-export/import, choose options, and click to import button.
 
 ## Credits
- author Manuel Grosrenaud
- author Pierre Lesbazeilles
- @Actency, http://www.actency.fr
+ author Manuel Grosrenaud &  author Pierre Lesbazeilles  @Actency, http://www.actency.fr 2014-2015
 
 
 
- 
+
