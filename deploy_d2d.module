@@ -114,6 +114,7 @@ function deploy_d2d_import_form($form, &$form_state) {
  */
 function deploy_d2d_export_form_submit($form, &$form_state) {
 $taxos = $taxo_order = $vocabs = $users = $menu_links = array();
+  $output='Files generate <br/>';
   $file = DRUPAL_ROOT . '/includes/utility.inc';
   if (is_file($file)) {
     require_once $file;
@@ -124,12 +125,14 @@ $taxos = $taxo_order = $vocabs = $users = $menu_links = array();
   foreach($entities_export as $entitie_export){
     $entities = entity_load($entitie_export);
     file_put_contents('public://export/'.$entitie_export.'.export', drupal_var_export($entities));
+    $output .= l($entitie_export.'.export',file_create_url('public://export/'.$entitie_export.'.export')).'<br/>';
   }
   //files need absolute url
   $files = deploy_d2d_get_files();
   file_put_contents('public://export/file.export', drupal_var_export($files));
-
+  $output.= l('file.export',file_create_url('public://export/file.export')).'<br/>';
   drupal_set_message(t('Export: succeeded (files are in public://export/)'));
+  drupal_set_message($output);
 }
 
 /**
@@ -137,57 +140,74 @@ $taxos = $taxo_order = $vocabs = $users = $menu_links = array();
  * @param $form_state
  */
 function deploy_d2d_import_form_submit($form, &$form_state) {
-  if ($form_state['values']['delete_atom'] == 1) {
-    drupal_set_message(t('Begin Delete Atoms'));
-    $sids = deploy_d2d_get_atoms();
-    scald_atom_delete_multiple($sids);
-    drupal_set_message(t('Delete @countnode Scald atoms', array('@countnode' => count($sids))));
-    //Truncate table automatically reset the Autoincrement values to 0.
-    db_truncate('scald_atoms')->execute();
-    drupal_set_message(t('truncate table scald_atoms'));
-  }
-
-
   $preserve_sid = ($form_state['values']['preserve_atom'] == 1) ? TRUE : FALSE;
+  $delete_atoms = ($form_state['values']['delete_atom'] == 1) ? TRUE : FALSE;
+  batch_deploy_import($preserve_sid,$delete_atoms);
 
-  $taxos = array();
-  $users = array();
-  $scalds = array();
+}
+
+/**
+ * @param $preserve_sid
+ * @param $url_to_download
+ * @param bool $delete_atom
+ */
+function batch_deploy_import($preserve_sid, $delete_atoms) {
+  $operation=array();
+
+
+  if ($delete_atoms) {
+    //delete all atoms
+    $sids = deploy_d2d_get_atoms();
+    foreach( $sids as  $sid){
+      $operation[] = array('batch_deploy_delete_atom', array($sid));
+    }
+    //truncate table scald_atoms
+    $operation[] = array('batch_truncate_atom_table', array());
+    drupal_set_message(t('Delete @countsid Scald atoms', array('@countsid' => count($sids))));
+  }
 
   // Get data
-  $files_file_import = file_get_contents('public://import/file.export');
-  $files_file = deploy_d2d_drupal_import($files_file_import);
-
-  $taxo_file_import = file_get_contents('public://import/taxonomy_term.export');
-  $taxo_import = deploy_d2d_drupal_import($taxo_file_import);
-
-  $users_file_import = file_get_contents('public://import/user.export');
-  $users_import = deploy_d2d_drupal_import($users_file_import);
-
   $scald_file_import = file_get_contents('public://import/scald_atom.export');
   $scalds_import = deploy_d2d_drupal_import($scald_file_import);
-
-  $i = 0;
-
   // Import scald
   foreach ($scalds_import as $current_scald) {
-    if (!array_key_exists($current_scald->sid, $scalds)) {
-      $scalds[$current_scald->sid] = deploy_d2d_process_scald_import($current_scald, $scalds_import, $taxo_import, $users_import, $scalds, $taxos, $users, $files_file, $i, $preserve_sid,$url_to_download);
-    }
+     $operation[] = array('deploy_d2d_process_scald_import', array($current_scald->sid,$preserve_sid));
   }
-  drupal_set_message(t('Import @countnode  scalds t', array('@countnode' => count($scalds))));
+  drupal_set_message(t('Import @countsid Scald atoms', array('@countsid' => count($scalds_import))));
 
+  $batch = array(
+    'operations' => $operation,
+    'finished' => ' batch_deploy_finished',
+    'init_message' => t('Start import Atoms.'),
+    'progress_message' => t('Processed @current out of @total.'),
 
-  $file = DRUPAL_ROOT . '/includes/utility.inc';
-  if (is_file($file)) {
-    require_once $file;
-  }
-  file_put_contents('public://import/taxonomy_term-report.import', drupal_var_export($taxos));
-  file_put_contents('public://import/user-report.import', drupal_var_export($users));
-  file_put_contents('public://import/scald_atom-report.import', drupal_var_export($scalds));
-  file_put_contents('public://import/file-report.import', drupal_var_export($files_file));
-  drupal_set_message(t('Import: finished'));
+  );
+  batch_set($batch);
 }
+
+
+
+/**
+ * Batch 'finished' callback
+ */
+function batch_deploy_finished($success, $results, $operations) {
+  if ($success) {
+    // Here we do something meaningful with the results.
+    $message = count($results) .' processed.';
+    $message .= theme('item_list', $results);  // D6 syntax
+    drupal_set_message($message);
+  }
+  else {
+    // An error occurred.
+    // $operations contains the operations that remained unprocessed.
+    $error_operation = reset($operations);
+    $message = t('An error occurred while processing %error_operation with arguments: @arguments', array('%error_operation' => $error_operation[0], '@arguments' => print_r($error_operation[1], TRUE)));
+    drupal_set_message($message, 'error');
+  }
+
+}
+
+
 
 /**
  * Import callback.
@@ -237,6 +257,7 @@ function deploy_d2d_get_files(){
 }
 
 /**
+ * Get all atoms Sid in database
  * @return mixed
  */
 function deploy_d2d_get_atoms() {
@@ -246,27 +267,58 @@ function deploy_d2d_get_atoms() {
     ->fetchCol();
 }
 
+
 /**
- * @param $scald
- * @param $scalds_import
- * @param $taxo_import
- * @param $users_import
- * @param $scalds
- * @param $taxos
- * @param $users
- * @param $files
- * @param $i
- * @param bool $preserve_sid
- * @return bool
+ * @param $context
  */
-function deploy_d2d_process_scald_import($scald, $scalds_import, $taxo_import, $users_import, &$scalds, &$taxos, &$users, &$files, &$i, $preserve_sid = FALSE) {
-  $sid = $scald->sid;
-  if (!array_key_exists($sid, $scalds)) {
-    $scald_destination = clone $scald;
-    if (!$preserve_sid) {
+function batch_truncate_atom_table(&$context) {
+  //Truncate table automatically reset the Autoincrement values to 0.
+  db_truncate('scald_atoms')->execute();
+  drupal_set_message(t('truncate table scald_atoms'));
+  $context['message'] = t('Now truncating table scald_atoms');
+}
+
+/**
+ * @param $sid
+ * @param $context
+ */
+function batch_deploy_delete_atom($sid,&$context) {
+  if (!isset($context['sandbox']['progress'])) {
+    $context['sandbox']['progress'] = 0;
+  }
+  scald_atom_delete($sid);
+  $context['message'] = t('Now deleting  atom sid  #%sid', array('%sid' => $sid));
+}
+/**
+ * @param $sid
+ * @param $preserve_sid
+ * @param array $scalds
+ * @param $context
+ * @return bool
+ * @throws Exception
+ */
+function deploy_d2d_process_scald_import($sid, $preserve_sid, &$context = array()) {
+
+  $context['message'] = t('Now importing atom sid #%sid', array('%sid' => $sid));
+
+  $scald_file_import = file_get_contents('public://import/scald_atom.export');
+  $scalds_import = deploy_d2d_drupal_import($scald_file_import);
+
+  $taxo_file_import = file_get_contents('public://import/taxonomy_term.export');
+  $taxo_import = deploy_d2d_drupal_import($taxo_file_import);
+
+  $users_file_import = file_get_contents('public://import/user.export');
+  $user_import =  deploy_d2d_drupal_import($users_file_import);
+
+  $files_file_import = file_get_contents('public://import/file.export');
+  $file_import = deploy_d2d_drupal_import($files_file_import);
+
+  $scald = $scalds_import[$sid];
+  $scald_destination = clone $scald;
+
+  if (!$preserve_sid) {
       unset($scald_destination->sid);
-    }
-    else {
+  } else {
       scald_atom_delete($scald_destination->sid);
       //insert values with protect sid
       db_insert('scald_atoms')// Table name no longer needs {}
@@ -282,18 +334,17 @@ function deploy_d2d_process_scald_import($scald, $scalds_import, $taxo_import, $
         'data' => serialize($scald_destination->data),
         'created' => REQUEST_TIME,
         'changed' => REQUEST_TIME,
-      ))
-        ->execute();
-
-
+      ))->execute();
     }
-    $user = $users[$scald->publisher];
+    if ($scald_destination->provider == "scald_apios_migrate") {
+      $scald_destination->provider = "scald_opa";
+    }
+
+    $user = $user_import[$scald->publisher];
     if ($user->uid) {
       $scald_destination->publisher = $user->uid;
     }
 
-    $scalds[$sid] = $scald_destination;
-    //watchdog("scald_destination",print_r($scald_destination,true));
     foreach ($scald_destination as $field_name => $field) {
       if (substr($field_name, 0, 5) == 'field' ||
         $field_name == 'base_entity' ||
@@ -305,8 +356,10 @@ function deploy_d2d_process_scald_import($scald, $scalds_import, $taxo_import, $
             if (isset($scald_destination->{$field_name}[LANGUAGE_NONE][0])) {
               foreach ($scald_destination->{$field_name}[LANGUAGE_NONE] as $k => $image) {
                 $fid = $scald_destination->{$field_name}[LANGUAGE_NONE][$k]['fid'];
-                $newfile = deploy_d2d_check_file($fid, $files);
-                $scald_destination->{$field_name}[LANGUAGE_NONE][$k] = (array)$newfile;
+                $new_file = deploy_d2d_check_file($fid, $file_import);
+                if ($fid && $new_file) {
+                  $scald_destination->{$field_name}[LANGUAGE_NONE][$k] = (array) $new_file;
+                }
               }
             }
             break;
@@ -315,17 +368,17 @@ function deploy_d2d_process_scald_import($scald, $scalds_import, $taxo_import, $
               foreach ($scald_destination->{$field_name}[LANGUAGE_NONE] as $k => $tid) {
                 if (isset($tid['tid'])) {
                   $ref_tid = (int) $tid['tid'];
-                  if (!array_key_exists($ref_tid, $taxos)) {
+                  if (!array_key_exists($ref_tid, $context['taxos'])) {
                     if (array_key_exists($ref_tid, $taxo_import)) {
-                      $taxos[$ref_tid] = deploy_d2d_check_taxo($ref_tid, 1, $taxo_import);
-                      $scald_destination->{$field_name}[LANGUAGE_NONE][$k]['tid'] = $taxos[$ref_tid]->tid;
+                      $context['taxos'][$ref_tid] = deploy_d2d_check_taxo($ref_tid, 1, $taxo_import);
+                      $scald_destination->{$field_name}[LANGUAGE_NONE][$k]['tid'] = $context['taxos'][$ref_tid]->tid;
                     }
                     else {
                       unset($scald_destination->{$field_name}[LANGUAGE_NONE][$k]);
                     }
                   }
                   else {
-                    $scald_destination->{$field_name}[LANGUAGE_NONE][$k]['tid'] = $taxos[$ref_tid]->tid;
+                    $scald_destination->{$field_name}[LANGUAGE_NONE][$k]['tid'] = $context['taxos'][$ref_tid]->tid;
                   }
                 }
               }
@@ -336,23 +389,13 @@ function deploy_d2d_process_scald_import($scald, $scalds_import, $taxo_import, $
         }
       }
     }
-
-    // node_object_prepare($node_destination);
-    // $node_destination = node_submit($node_destination); // Prepare node for saving
     try {
-      $i++;
       scald_atom_save($scald_destination);
-      $success = TRUE;
-      //    $nodes[$nid] = $node_destination;
-      return $scald_destination;
     } catch (Exception $e) {
-      // Do your error handling here.
       drupal_set_message(t('Atoms id  @sid not saved  due to an unexpected error', array('@sid' => $scald_destination->sid)));
-      return FALSE;
     }
-  }
-  return FALSE;
 }
+
 
 /**
  * @param $users_import
@@ -468,9 +511,7 @@ function deploy_d2d_create_user($user) {
  * @return array|bool
  */
 function deploy_d2d_check_file($fid = NULL, $fids = array()) {
-
   $file = $fids[$fid];
-
   if ($file) {
     $uuid = "";
     if (isset($file->uuid)) {
@@ -514,12 +555,9 @@ function download_external_file($url, $uri, $save_mode = FILE_EXISTS_RENAME, $ma
   $directory = file_stream_wrapper_uri_normalize($uri_scheme . "://" . $uri_path_info['dirname']);
   if (file_prepare_directory($directory, FILE_CREATE_DIRECTORY)) {
     $drupal_result = drupal_http_request($url);
-
-    print_r($uuid);
     if (!empty($drupal_result->data) && !isset($drupal_result->error)) {
       $path = file_stream_wrapper_uri_normalize($uri);
       if ($manage_file) {
-
         $new_file = file_save_data($drupal_result->data, $path, $save_mode);
         if (!empty($uuid) && is_object($new_file) && module_exists('uuid') && function_exists('entity_uuid_load')){
           $new_file->uuid=$uuid;
@@ -532,7 +570,6 @@ function download_external_file($url, $uri, $save_mode = FILE_EXISTS_RENAME, $ma
     }
     else {
       drupal_set_message(t('Error downloading file, no data recieved for @url', array('@url' => $url)));
-
       return FALSE;
     }
 
