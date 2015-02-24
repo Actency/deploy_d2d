@@ -7,12 +7,12 @@
  * @author Pierre Lesbazeilles
  *
  * @todo
- * - vbo implementation	(enrich node selection mechanism befor export)
+ * - vbo implementation    (enrich node selection mechanism befor export)
  * - manage taxonomy voc
  * - extend uuid to others entities than only nodes
  * - implement some logs
  */
- 
+
 /**
  * Implements hook_help().
  *
@@ -26,7 +26,7 @@ function deploy_d2d_help($path) {
       break;
 
     case 'deploy_d2d/import-export/export':
-      $output  = t('Load file in public://export and saves nodes ');
+      $output = t('Load file in public://export and saves nodes ');
       break;
   }
   return $output;
@@ -77,7 +77,7 @@ function deploy_d2d_export_form($form, &$form_state) {
     $form['domain'] = array(
       '#type' => 'select',
       '#title' => t('Domain'),
-       '#options' => $options,
+      '#options' => $options,
       '#required' => TRUE,
     );
   }
@@ -110,7 +110,12 @@ function deploy_d2d_import_form($form, &$form_state) {
       '#required' => TRUE,
     );
   }
-  $form['delete']['delete'] = array('#type' => 'checkbox', '#title' => t('Delete ALL nodes before import.'),  '#return_value' => 1,    '#default_value' => 0, );
+  $form['delete']['delete'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Delete ALL nodes before import.'),
+    '#return_value' => 1,
+    '#default_value' => 0,
+  );
 
   $form['submit'] = array('#type' => 'submit', '#value' => t('Import'));
   return $form;
@@ -150,30 +155,31 @@ function deploy_d2d_export_form_submit($form, &$form_state) {
   }
   file_put_contents('public://export/menu_links.export', drupal_var_export($menu_links));
 
-  $files= deploy_d2d_get_files($nids);
+  $files = deploy_d2d_get_files($nids);
   file_put_contents('public://export/files.export', drupal_var_export($files));
 
   drupal_set_message(t('Export: succeeded (files are in public://export/)'));
 }
 
 function deploy_d2d_import_form_submit($form, &$form_state) {
+  set_time_limit(0);
 
-
-  if( $form_state['values']['delete']==1){
-    $nids=array();
-    if(isset($form_state['values']['domain']) && (int)($form_state['values']['domain'])>0){
+  if ($form_state['values']['delete'] == 1) {
+    $nids = array();
+    if (isset($form_state['values']['domain']) && (int) ($form_state['values']['domain']) > 0) {
       $result = db_query("SELECT da.nid  FROM {domain_access} da where da.gid=:gid and realm='domain_id' ", array(':gid' => $form_state['values']['domain']));
       foreach ($result as $row) {
-          $nids[] = $row->nid;
+        $nids[] = $row->nid;
       }
-    }else{
+    }
+    else {
       $result = db_query('SELECT n.nid FROM {node} n');
       foreach ($result as $row) {
         $nids[$row->nid] = $row->nid;
       }
     }
-     node_delete_multiple($nids);
-    drupal_set_message(t('Delete @countnode nodes',array('@countnode'=>count($nids))));
+    node_delete_multiple($nids);
+    drupal_set_message(t('Delete @countnode nodes', array('@countnode' => count($nids))));
   }
 
 
@@ -202,7 +208,7 @@ function deploy_d2d_import_form_submit($form, &$form_state) {
 
   $menu_links_file_import = file_get_contents('public://import/menu_links.export');
   $menu_links_import = deploy_d2d_drupal_import($menu_links_file_import);
-  $i=0;
+  $i = 0;
 
   // Import
   //users :
@@ -211,10 +217,10 @@ function deploy_d2d_import_form_submit($form, &$form_state) {
   // nodes
   foreach ($nodes_import as $current_node) {
     if (!array_key_exists($current_node->nid, $nodes)) {
-      $nodes[$current_node->nid] = deploy_d2d_process_node_import($current_node, $nodes_import, $taxo_import, $users_import, $nodes, $taxos, $users,$files_file,$i);
+      $nodes[$current_node->nid] = deploy_d2d_process_node_import($current_node, $nodes_import, $taxo_import, $users_import, $nodes, $taxos, $users, $files_file, $i);
     }
   }
-  drupal_set_message(t('Import @countnode nodes',array('@countnode'=>count($nodes))));
+  drupal_set_message(t('Import @countnode nodes', array('@countnode' => count($nodes))));
 
 
   // Import menus links
@@ -223,7 +229,7 @@ function deploy_d2d_import_form_submit($form, &$form_state) {
       $menu_links[$menu_link['mlid']] = deploy_d2d_process_menu_link_import($menu_link, $menu_links_import, $nodes, $menu_links);
     }
   }
-  drupal_set_message(t('Import @countnode menu links',array('@countnode'=>count($menu_link))));
+  drupal_set_message(t('Import @countnode menu links', array('@countnode' => count($menu_link))));
 
   drupal_set_message(t('Import: succeeded'));
 
@@ -269,11 +275,12 @@ function deploy_d2d_drupal_decode_objects($array) {
 
 function deploy_d2d_get_nodes($domain) {
   if (module_exists('domain')) {
-  $query = db_select('domain_access', 'da');
-  $query
-    ->condition('da.gid', $domain)
-    ->fields('da', array('nid'));
-  }else{
+    $query = db_select('domain_access', 'da');
+    $query
+      ->condition('da.gid', $domain)
+      ->fields('da', array('nid'));
+  }
+  else {
     $query = db_select('node', 'n');
     $query
       ->fields('n', array('nid'));
@@ -292,7 +299,7 @@ function deploy_d2d_get_menu_links($nids) {
 }
 
 
-function deploy_d2d_get_files($nids = NULL){
+function deploy_d2d_get_files($nids = NULL) {
   $files = array();
   $result = db_query('SELECT m.fid FROM {file_managed} m');
   foreach ($result as $row) {
@@ -303,7 +310,6 @@ function deploy_d2d_get_files($nids = NULL){
   }
   return $files;
 }
-
 
 
 function deploy_d2d_process_menu_link_import($menu_link, $menu_links_import, $nodes, &$menu_links) {
@@ -338,205 +344,339 @@ function deploy_d2d_process_menu_link_import($menu_link, $menu_links_import, $no
   return FALSE;
 }
 
-function deploy_d2d_process_node_import($node, $nodes_import, $taxo_import, $users_import, &$nodes, &$taxos, &$users, &$files,&$i) {
-
+/**
+ * Import a node.
+ */
+function deploy_d2d_process_node_import($node, $nodes_import, $taxo_import, $users_import, &$nodes, &$taxos, &$users, &$files, &$i) {
+  $node_destination = FALSE;
   $nid = $node->nid;
+
+  // Check if node was not already imported.
   if (!array_key_exists($node->nid, $nodes)) {
+    // Clone the old node into a new one.
     $node_destination = clone $node;
-    if (module_exists('uuid') && function_exists('entity_uuid_load') && $node->uuid && $node_destinationuuuid =entity_uuid_load('node', array($node->uuid))){
-      $node_destinationuuuid=$node_destinationuuuid[key($node_destinationuuuid)];
-     /* if ($node_destinationuuuid->changed > (time()-60*60) || $i > 10){
-        $nodes[$nid] = $node_destinationuuuid;
-        return $node_destinationuuuid;
-      }*/
-      $node_destination->uid=$node->uid;
-      $node_destination->revision_uid=$node->revision_uid;
-      $node_destination->vid=$node_destinationuuuid->vid;
-      $node_destination->nid=$node_destinationuuuid->nid;
-      $node_destination->tnid=$node_destinationuuuid->tnid;
-      $node_destination->vuuid=$node_destinationuuuid->vuuid;
-      $node_destination->uuid=$node_destinationuuuid->uuid;
-    } else {
+
+    // Try to keep the UUID data to avoid duplicate nodes.
+    if (module_exists('uuid') && function_exists('entity_uuid_load') && $node->uuid && $node_destinationuuuid = entity_uuid_load('node', array($node->uuid))) {
+      $node_destinationuuuid = $node_destinationuuuid[key($node_destinationuuuid)];
+      $node_destination->uid = $node->uid;
+      $node_destination->revision_uid = $node->revision_uid;
+      $node_destination->vid = $node_destinationuuuid->vid;
+      $node_destination->nid = $node_destinationuuuid->nid;
+      $node_destination->tnid = $node_destinationuuuid->tnid;
+      $node_destination->vuuid = $node_destinationuuuid->vuuid;
+      $node_destination->uuid = $node_destinationuuuid->uuid;
+    }
+    else {
       unset($node_destination->vid);
       unset($node_destination->nid);
       unset($node_destination->tnid);
     }
-    $user=$users[$node->uid];
-    if($user->uid){
-      $node_destination->uid=$user->uid;
+
+    // Assign the real user because uid might have changed.
+    $user = $users[$node->uid];
+    if ($user->uid) {
+      $node_destination->uid = $user->uid;
     }
 
-    //obtain a nid
-    node_object_prepare($node_destination);
-    $node_destination = node_submit($node_destination); // Prepare node for saving
-    node_save($node_destination);
-    $nodes[$nid] = $node_destination;
-   foreach ($node_destination as $field_name => $field) {
+    // Extract fields data and process it later.
+    $fields = array();
+    foreach ($node_destination as $field_name => $field) {
       if (substr($field_name, 0, 5) == 'field') {
-        $field_info = field_info_field($field_name);
-        switch ($field_info['type']) {
-          case 'link_field':
-            if (isset($node_destination->{$field_name}[LANGUAGE_NONE][0])) {
-              foreach ($node_destination->{$field_name}[LANGUAGE_NONE] as $k => $link) {
-                if (isset($link['url']) && substr($link['url'], 0, 5) == 'node/') {
-                  $ref_nid = (int) substr($link['url'], 5);
-                  if (!array_key_exists($ref_nid, $nodes) && $ref_nid != $nid) {
-                    if (array_key_exists($ref_nid, $nodes_import)) {
-                    $nodes[$ref_nid] = deploy_d2d_process_node_import($nodes_import[$ref_nid], $nodes_import, $taxo_import, $users_import, $nodes, $taxos, $users, $files,$i);
-                     $node_destination->{$field_name}[LANGUAGE_NONE][$k]['url'] = 'node/' . $nodes[$ref_nid]->nid;
-                    }
-                    else {
-                      unset($node_destination->{$field_name}[LANGUAGE_NONE][$k]);
-                    }
-                  }
-                  else {
-                    $node_destination->{$field_name}[LANGUAGE_NONE][$k]['url'] = 'node/' . $nodes[$ref_nid]->nid;
-                  }
-                }
-              }
-            }
-            break;
-            
-          case 'image':
-            if (isset($node_destination->{$field_name}[LANGUAGE_NONE][0])) {
-              foreach ($node_destination->{$field_name}[LANGUAGE_NONE] as $k => $image) {
-                $fid=$node_destination->{$field_name}[LANGUAGE_NONE][$k]['fid'];
-                $newfile=deploy_d2d_check_file($fid,$files);
-                $node_destination->{$field_name}[LANGUAGE_NONE][$k] = $newfile;
-              }
-            }
-            break;
+        if (is_array($node_destination->{$field_name}) && count($node_destination->{$field_name}) == 1) {
+          $langcode = array_keys($node_destination->{$field_name});
+          $langcode = array_shift($langcode);
 
-          case 'entityreference':
-            if (isset($node_destination->{$field_name}[LANGUAGE_NONE][0])) {
-
-              foreach ($node_destination->{$field_name}[LANGUAGE_NONE] as $k => $target_id) {
-                if (isset($target_id['target_id'])) {
-                  $ref_nid = (int) $target_id['target_id'];
-                  if (!array_key_exists($ref_nid, $nodes)) {
-                    if (array_key_exists($ref_nid, $nodes_import)) {
-                      $nodes[$ref_nid] = deploy_d2d_process_node_import($nodes_import[$ref_nid], $nodes_import, $taxo_import, $users_import, $nodes, $taxos, $users, $files,$i);
-                      $node_destination->{$field_name}[LANGUAGE_NONE][$k]['target_id'] = $nodes[$ref_nid]->nid;
-                    }
-                    else {
-                      unset($node_destination->{$field_name}[LANGUAGE_NONE][$k]);
-                    }
-                  }
-                  else {
-                    $node_destination->{$field_name}[LANGUAGE_NONE][$k]['target_id'] = $nodes[$ref_nid]->nid;
-                  }
-                }
-              }
-
-            }
-            break;
-
-          case 'taxonomy_term_reference':
-            if (isset($node_destination->{$field_name}['fr'][0])) {
-              foreach ($node_destination->{$field_name}['fr'] as $k => $tid) {
-                if (isset($tid['tid'])) {
-                  $ref_tid = (int) $tid['tid'];
-                  if (!array_key_exists($ref_tid, $taxos)) {
-                    if (array_key_exists($ref_tid, $taxo_import)) {
-                      $taxos[$ref_tid] = deploy_d2d_check_taxo($ref_tid, 1, $taxo_import);
-                      $node_destination->{$field_name}['fr'][$k]['tid'] = $taxos[$ref_tid]->tid;
-                    }
-                    else {
-                      unset($node_destination->{$field_name}['fr'][$k]);
-                    }
-                  }
-                  else {
-                    $node_destination->{$field_name}['fr'][$k]['tid'] = $taxos[$ref_tid]->tid;
-                  }
-                }
-              }
-            }
-            break;
-
-          default:
-            break;
+          $fields[$field_name]['data'] = $node_destination->{$field_name}[$langcode];
+          $fields[$field_name]['langcode'] = $langcode;
         }
       }
     }
-   
+
+    // Prepare node for saving.
     node_object_prepare($node_destination);
-    $node_destination = node_submit($node_destination); // Prepare node for saving
+    $node_destination = node_submit($node_destination);
+
+    // Get a NID of this new node but without saving his fields at first.
     try {
+      node_save($node_destination);
+    } catch (Exception $e) {
+      // Error while trying to save node data. Log the error.
+      drupal_set_message(t('Error when saving node %nid% : %error%. Please check this node manually.', array('%nid%' => $node_destination->nid, '%error%' => $e->getMessage())), 'warning');
+      return FALSE;
+    }
+
+    // Mark the node as already imported.
+    $nodes[$nid] = $node_destination;
+
+    // Iterate over fields and process them.
+    foreach ($fields as $field_name => $field) {
+      $field_info = field_info_field($field_name);
+      $langcode = $field['langcode'];
+      $field_data = $field['data'];
+
+      switch ($field_info['type']) {
+        case 'text_long':
+          // Search for things like this in the HTML :
+          // [[{"type":"media","view_mode":"media_link","fid":"1188","attributes":{"class":"media-image","title":"immatriculation d'un commerçant individuel"}}]]
+          $regex = "/\\[\\[{.*\"fid\":\"(\\d*)\".*}\\]\\]/U";
+          foreach ($field_data as $index => $txt_data) {
+            if (preg_match_all($regex, $txt_data['value'], $matches) > 0) {
+              foreach ($matches[0] as $match_index => $match) {
+                $old_fid = $matches[1][$match_index];
+                $new_file = deploy_d2d_check_file($old_fid, $files);
+                if (!$new_file) {
+                  // There was an error, display a message.
+                  drupal_set_message(t("Error when importing file embedded '%embed%', please check the node %nid%.", array(
+                    '%embed%' => $match,
+                    '%nid%' => $node_destination->nid
+                  )), 'warning');
+                }
+                else {
+                  // Replace the fid in the text.
+                  $new_match = str_replace($old_fid, $new_file->fid, $match);
+
+                  // Replace the match in the HTML.
+                  $node_destination->{$field_name}[$langcode][$index]['value'] = str_replace($match, $new_match, $node_destination->{$field_name}[$langcode][$index]['value']);
+                  $node_destination->{$field_name}[$langcode][$index]['safe_value'] = str_replace($match, $new_match, $node_destination->{$field_name}[$langcode][$index]['safe_value']);
+                }
+              }
+            }
+          }
+          break;
+
+        case 'link_field':
+          foreach ($field_data as $index => $link_data) {
+            if (isset($link_data['url']) && substr($link_data['url'], 0, 5) == 'node/') {
+              $ref_nid = (int) substr($link_data['url'], 5);
+
+              // Check if the node was already imported.
+              if (!array_key_exists($ref_nid, $nodes) && $ref_nid != $nid) {
+                // Check if the node is in the export.
+                if (array_key_exists($ref_nid, $nodes_import)) {
+                  // The node is in the export and was not already imported.
+                  // Import it and its data.
+                  $new_node = deploy_d2d_process_node_import($nodes_import[$ref_nid], $nodes_import, $taxo_import, $users_import, $nodes, $taxos, $users, $files, $i);
+                  $node_destination->{$field_name}[$langcode][$index]['url'] = 'node/' . $new_node->nid;
+
+                  // Mark the node as imported.
+                  $nodes[$ref_nid] = $new_node;
+                }
+                else {
+                  // The node is not in the export... unset it ?
+                  // @TODO make sure it's the proper behavior.
+                  unset($node_destination->{$field_name}[$langcode][$index]);
+                }
+              }
+              else {
+                // The node was already imported. Only set its real new nid.
+                $node_destination->{$field_name}[$langcode][$index]['url'] = 'node/' . $nodes[$ref_nid]->nid;
+              }
+            }
+          }
+          break;
+
+        case 'image':
+          foreach ($field_data as $index => $image_data) {
+            if (isset($image_data['fid'])) {
+              $new_file = deploy_d2d_check_file($image_data['fid'], $files);
+              if (!$new_file) {
+                // There was an error, display a message.
+                drupal_set_message(t("Error when importing image %url%, please check the node %nid%.", array(
+                  '%url%' => $image_data['filename'],
+                  '%nid%' => $node_destination->nid
+                )), 'warning');
+              }
+              else {
+                // Add the file to the node.
+                $node_destination->{$field_name}[$langcode][$index] = (array) $new_file;
+              }
+            }
+          }
+          break;
+
+        case 'entityreference':
+          foreach ($field_data as $index => $target_id) {
+            if (isset($target_id['target_id'])) {
+              $ref_nid = (int) $target_id['target_id'];
+
+              // Check if the node was already imported.
+              if (!array_key_exists($ref_nid, $nodes)) {
+                // Check if the node is in the export.
+                if (array_key_exists($ref_nid, $nodes_import)) {
+                  // The node is in the export and was not already imported.
+                  // Import it and its data.
+                  $new_node = deploy_d2d_process_node_import($nodes_import[$ref_nid], $nodes_import, $taxo_import, $users_import, $nodes, $taxos, $users, $files, $i);
+                  $node_destination->{$field_name}[$langcode][$index]['target_id'] = $new_node->nid;
+
+                  // Mark the node as imported.
+                  $nodes[$ref_nid] = $new_node;
+                }
+                else {
+                  // The node is not in the export... unset it ?
+                  // @TODO make sure it's the proper behavior.
+                  unset($node_destination->{$field_name}[$langcode][$index]);
+                }
+              }
+              else {
+                // The node was already imported. Only set its real new nid.
+                $node_destination->{$field_name}[$langcode][$index]['target_id'] = $nodes[$ref_nid]->nid;
+              }
+            }
+          }
+          break;
+
+        case 'taxonomy_term_reference':
+          foreach ($field_data as $index => $term_data) {
+            if (isset($term_data['tid'])) {
+              $tid = (int) $term_data['tid'];
+
+              // Check if the term was already imported.
+              if (!array_key_exists($tid, $taxos)) {
+                // Check if the term is in the export.
+                if (array_key_exists($tid, $taxo_import)) {
+                  // The term is in the export and was not already imported.
+                  // Import it and its data.
+                  $new_term = deploy_d2d_check_taxo($tid, 1, $taxo_import);
+                  $node_destination->{$field_name}[$langcode][$index]['tid'] = $new_term->tid;
+
+                  // Mark the term as imported.
+                  $taxos[$tid] = $new_term;
+                }
+                else {
+                  // The term is not in the export... unset it ?
+                  // @TODO make sure it's the proper behavior.
+                  unset($node_destination->{$field_name}[$langcode][$index]);
+                }
+              }
+              else {
+                // The term was already imported. Only set its real new tid.
+                $node_destination->{$field_name}[$langcode][$index]['tid'] = $taxos[$tid]->tid;
+              }
+            }
+          }
+          break;
+
+        default:
+          break;
+      }
+    }
+
+    try {
+      // Save the node with all its final data.
       $i++;
       node_save($node_destination);
-      $success = TRUE;
-  //    $nodes[$nid] = $node_destination;
-      return $node_destination;
     } catch (Exception $e) {
-      // Do your error handling here.
-      drupal_set_message('probleme de save :  '.$node_destination->title );
+      // Error while trying to save node data. Log the error.
+      drupal_set_message(t('Error when saving node %nid% : %error%.', array('%nid%' => $node_destination->nid, '%error%' => $e->getMessage())), 'error');
       return FALSE;
     }
   }
-  return FALSE;
+
+  return $node_destination;
 }
 
-function deploy_d2d_process_users_import($users_import){
-  $users_destination=array();
-foreach($users_import as $user){
+function deploy_d2d_process_users_import($users_import) {
+  $users_destination = array();
+  foreach ($users_import as $user) {
 
-  $uid = $user->uid;
-  if ($uid>1){
-  $user_destination = ($user->mail)?user_load_by_mail(array('mail'=> $user->mail)):false;
-    if (!$user_destination || $user_destination->uid==0){ //pas de user existant je verifie dans les uuid
-        if (module_exists('uuid') && function_exists('entity_uuid_load') &&
-          $user->uuid && $user_destinationuuuid =entity_uuid_load('user', array($user->uuid))){
+    $uid = $user->uid;
+    if ($uid > 1) {
+      // Try to load by email.
+      $user_destination = ($user->mail) ? user_load_by_mail($user->mail) : FALSE;
+
+      // Try to load by name.
+      if (!$user_destination || $user_destination->uid == 0) {
+        $user_destination = user_load_by_name($user->name);
+      }
+
+      // Try to load by UUID.
+      if (!$user_destination || $user_destination->uid == 0) {
+        if (module_exists('uuid') && function_exists('entity_uuid_load') && $user->uuid && $user_destinationuuuid = entity_uuid_load('user', array($user->uuid))) {
           unset($user->uid);
-          $user->uid=$user_destinationuuuid->uid;
-          $user->uuid=$user_destinationuuuid->uuid;
-          $user_destination=user_save($user);
-        }else{
-          unset($user->uid);
-          $user_destination=user_save($user);
+          $user->uid = $user_destinationuuuid->uid;
+          $user->uuid = $user_destinationuuuid->uuid;
+          $user_destination = user_save($user);
         }
+        else {
+          unset($user->uid);
+          $user_destination = user_save($user);
+        }
+      }
+      else {
+        $user->uid = $user_destination->uid;
+        $user_destination = user_save($user);
+      }
+    }
+    else {
+      $user_destination = $user;
+    }
+    $users[$uid] = $user_destination;
   }
-  else{
-    $user->uid=$user_destination->uid;
-    $user_destination=user_save($user);
-  }
-  }
-  else{
-    $user_destination=$user;
-  }
-  $users[$uid]=$user_destination;
-}
 
-  return  $users;
+  return $users;
 }
 
 /**
- * Check if taxo aready exists
+ * Check if taxonomy term already exists.
+ *
+ * @param int $tid
+ *   The term id.
+ * @param int $vid
+ *   The version id.
+ * @param array $exported
+ *   All exported terms to import.
+ *
+ * @return \stdClass
  */
-function deploy_d2d_check_taxo($tid, $vid, $taxo_import_order) {
-  $term = $taxo_import_order[$tid];
-  if (taxonomy_get_term_by_name($term->name, $vid)) {
-    $taxo = taxonomy_get_term_by_name($term->name, $vid);
+function deploy_d2d_check_taxo($tid, $vid, array $exported) {
+  $term = null;
+
+  // Get the exported term data.
+  $old_term = $exported[$tid];
+
+  // Try to get an existing term by name.
+  $term = taxonomy_get_term_by_name($old_term->name, $vid);
+
+  // Try to get an existing term by uuid.
+  if (!$term && module_exists('uuid') && function_exists('entity_uuid_load') && $old_term->uuid) {
+    $term = entity_uuid_load('taxonomy_term', array($old_term->uuid));
+    if (is_array($term)) {
+      $term = array_shift($term);
+    }
   }
-  else {
-    $taxo = deploy_d2d_create_taxonomy_term($term->name, $vid, $ptid = 0);
+
+  if (!$term) {
+    // Unable to find an existing term. Import the term as a new one.
+    $term = deploy_d2d_create_taxonomy_term($old_term);
   }
-  return $taxo;
+
+  return $term;
 }
 
 /**
  * Create a taxonomy term and return the tid.
+ *
+ * @param object $old_term
+ *   The old term that is imported.
+ *
+ * @return object
+ *   The new imported term.
  */
-function deploy_d2d_create_taxonomy_term($name, $vid, $ptid = 0) {
+function deploy_d2d_create_taxonomy_term($old_term) {
   $term = new stdClass();
-  $term->name = $name;
-  $term->vid = $vid;
-  if ($ptid != 0) {
-    $term->parent = $ptid;
+  $term->name = $old_term->name;
+  $term->vid = $old_term->vid;
+  $term->parents = $old_term->parents; // @TODO for now, doesn't support hierarch. Adapt if necessary.
+
+  if (module_exists('uuid') && isset($old_term->uuid)) {
+    // Save the UUID for future imports.
+    $term->uuid = $old_term->uuid;
   }
-  else {
-    $term->parent = NULL;
-  }
+
+  // Save the new term.
   taxonomy_term_save($term);
+
   return $term;
 }
 
@@ -565,59 +705,109 @@ function deploy_d2d_create_user($user) {
   return $user;
 }
 
+/**
+ * Check if a file already exists.
+ *
+ * @param int $fid
+ *   The file fid.
+ * @param array $files
+ *   All exported files.
+ *
+ * @return \stdClass
+ */
+function deploy_d2d_check_file($fid, array $files) {
+  $file = null;
 
-function deploy_d2d_check_file($fid=NULL,$fids=array()){
-  $file = $fids[$fid];
-  if ($file) {
-    //download file into new dir
-    if (module_exists('uuid') && function_exists('entity_uuid_load') && $node->uuid && $file_destination =entity_uuid_load('file', array($file->uuid))){
-      return $file_destination;
-    }
-    return download_external_file($file['url'], $file['uri'],  FILE_EXISTS_RENAME,   TRUE);
+  // Get the exported file data.
+  $old_file = $files[$fid];
+
+  // Try to get an existing file by URI.
+  $file = file_load_multiple(array(), array('uri' => $old_file['uri']));
+  if (is_array($file) && count($file) == 1) {
+    $file = array_shift($file);
   }
+
+  // Try to get an existing file by UUID.
+  if (!$file && module_exists('uuid') && function_exists('entity_uuid_load') && isset($old_file['uuid'])) {
+    $file = entity_uuid_load('file', array($old_file['uuid']));
+    if (is_array($file)) {
+      $file = array_shift($file);
+    }
+  }
+
+  if (!$file) {
+    // Unable to find an existing file. Import the file as a new one.
+    $file = download_external_file($old_file['url'], $old_file['uri'], FILE_EXISTS_RENAME, TRUE);
+    if ($file) {
+      $file->uuid = $old_file['uuid'];
+      file_save($file);
+    }
+  }
+
   return $file;
 }
 
 /**
+ * Download an external file when importing files.
  *
- * param string $url
- *    Full url to file to download
- * param string $uri
- *    Drupal uri of where to save file public://archive/test.pdf
- * param int $save_mode
- *    File save mode from drupal core, ex FILE_EXISTS_REPLACE
- * http://www.patrickjwaters.com/blog/2013-08-22/drupal-7-how-programmatically-download-files-optionally-save-them-managed-files-save
+ * @see http://www.patrickjwaters.com/blog/2013-08-22/drupal-7-how-programmatically-download-files-optionally-save-them-managed-files-save
+ *
+ * @param string $url
+ *   Full url to file to download
+ * @param string $uri
+ *   Drupal uri of where to save file public://archive/test.pdf
+ * @param int $save_mode
+ *   File save mode from drupal core, ex FILE_EXISTS_REPLACE
+ * @param bool $manage_file
+ *   Manage file by drupal ? Defaults to TRUE.
+ *
+ * @return object|bool
+ *   The file or FALSE if an error occurred.
  */
 function download_external_file($url, $uri, $save_mode = FILE_EXISTS_RENAME, $manage_file = TRUE) {
   $url_info = parse_url($url);
   $url_path_info = pathinfo($url_info['path']);
 
-  //This helps with filenames with spaces
-  $url = $url_info['scheme'] . '://' . $url_info['host']  . $url_path_info['dirname'] .'/'. rawurlencode($url_path_info['basename']);
+  // This helps with filename with spaces.
+  $url = $url_info['scheme'] . '://' . $url_info['host'] . $url_path_info['dirname'] . '/' . rawurlencode($url_path_info['basename']);
 
-  //Need to remove the filename from the uri
+  // Need to remove the filename from the uri.
   $uri_target = file_uri_target($uri);
   $uri_scheme = file_uri_scheme($uri);
   $uri_path_info = pathinfo($uri_target);
   $directory = file_stream_wrapper_uri_normalize($uri_scheme . "://" . $uri_path_info['dirname']);
 
-  if(file_prepare_directory($directory, FILE_CREATE_DIRECTORY)) {
+  // Create the directory.
+  if (file_prepare_directory($directory, FILE_CREATE_DIRECTORY)) {
+    // HTTP request to get the image.
     $drupal_result = drupal_http_request($url);
-    if(!empty($drupal_result->data)) {
+    if (!empty($drupal_result->data)) {
       $path = file_stream_wrapper_uri_normalize($uri);
-      if($manage_file) {
+      if ($manage_file) {
         $new_file = file_save_data($drupal_result->data, $path, $save_mode);
-      } else {
+        if (!$new_file) {
+          // Error while saving the file. Log the error.
+          watchdog('deploy_d2d', 'Error saving file %file%.', array('%file%' => $url), WATCHDOG_WARNING);
+          return FALSE;
+        }
+      }
+      else {
         return file_unmanaged_save_data($drupal_result->data, $path, $save_mode);
       }
-    } else {
-      drupal_set_message("Error downloading file, no data recieved for " . $url);
+    }
+    else {
+      // Error while getting the file. Log the error.
+      watchdog('deploy_d2d', 'Error download file %file% - %error%.', array('%file%' => $url, '%error%' => $drupal_result->error), WATCHDOG_WARNING);
       return FALSE;
     }
 
     $new_file->display = 1;
-    return (array)$new_file;
-  } else {
-    drupal_set_message("Could not create directory");
+    $new_file->status = FILE_STATUS_PERMANENT;
+    return $new_file;
+  }
+  else {
+    // Error while creating directory. Log the error.
+    watchdog('deploy_d2d', 'Could not create directory %dir%.', array('%dir%' => $directory), WATCHDOG_WARNING);
+    return FALSE;
   }
 }
